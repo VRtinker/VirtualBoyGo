@@ -242,15 +242,13 @@ namespace Emulator {
      BUTTON_RSTICK_LEFT, BUTTON_RSTICK_DOWN};
  */
 
-//const uint buttonCount = 14;
     GLuint *button_icons[buttonCount] =
             {&textureButtonAIconId, &textureButtonBIconId, &mappingTriggerRight, &mappingTriggerLeft, &mappingRightUpId, &mappingRightRightId,
              &mappingLeftRightId, &mappingLeftLeftId, &mappingLeftDownId, &mappingLeftUpId, &mappingStartId, &mappingSelectId,
              &mappingRightLeftId, &mappingRightDownId};
 
-    // uint button_mapping_index_reset[buttonCount] = {0, 1, 8, 9, 18, 21, 17, 16, 15, 14, 4, 6, 20, 19};
-    MappedButtons buttonMapping[buttonCount];// = {0, 1, 8, 9, 18, 21, 17, 16, 15, 14, 4, 6, 20, 19};
-    //uint button_mapping[buttonCount];
+    MappedButtons buttonMapping[buttonCount];
+    int buttonOrder[14] = {0, 1, 3, 2, 11, 10, 7, 6, 9, 8, 12, 5, 4, 13};
 
     LoadedGame *currentGame;
 
@@ -273,7 +271,8 @@ namespace Emulator {
 
     int screenPosY;
 
-    int TextureHeight = VIDEO_HEIGHT * 2 + 12;
+    int screenborder = 1;
+    int TextureHeight = VIDEO_HEIGHT * 2 + 1 * 2;//12;
 
     int32_t *pixelData = new int32_t[VIDEO_WIDTH * TextureHeight];
 
@@ -293,9 +292,7 @@ namespace Emulator {
     void InitStateImage() {
         glGenTextures(1, &stateImageId);
         glBindTexture(GL_TEXTURE_2D, stateImageId);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, VIDEO_WIDTH, VIDEO_HEIGHT, 0, GL_RGBA,
-                     GL_UNSIGNED_BYTE,
-                     NULL);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, VIDEO_WIDTH, VIDEO_HEIGHT, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
@@ -310,9 +307,8 @@ namespace Emulator {
         for (int y = 0; y < VIDEO_HEIGHT; ++y) {
             for (int x = 0; x < VIDEO_WIDTH; ++x) {
                 uint8_t das = dataArray[x + y * VIDEO_WIDTH];
-                stateImageData[x + y * VIDEO_WIDTH] = 0xFF000000 | ((int) (das * color[2]) << 16) |
-                                                      ((int) (das * color[1]) << 8) |
-                                                      (int) (das * color[0]);
+                stateImageData[x + y * VIDEO_WIDTH] =
+                        0xFF000000 | ((int) (das * color[2]) << 16) | ((int) (das * color[1]) << 8) | (int) (das * color[0]);
             }
         }
 
@@ -327,19 +323,25 @@ namespace Emulator {
         uint8_t *dataArray = (uint8_t *) data;
 
         {
-            for (int y = 0; y < TextureHeight; ++y) {
+            for (int y = 0; y < VIDEO_HEIGHT; ++y) {
                 for (int x = 0; x < VIDEO_WIDTH; ++x) {
                     uint8_t das = dataArray[x + y * VIDEO_WIDTH];
-                    // uint8_t das = dataArray[x / 2 + y / 2 * VIDEO_WIDTH * 2 + VIDEO_WIDTH];
-                    pixelData[x + y * VIDEO_WIDTH] = 0xFF000000 | ((int) (das * color[2]) << 16) |
-                                                     ((int) (das * color[1]) << 8) |
-                                                     (int) (das * color[0]);
+                    pixelData[x + y * VIDEO_WIDTH] =
+                            0xFF000000 | ((int) (das * color[2]) << 16) | ((int) (das * color[1]) << 8) | (int) (das * color[0]);
+                }
+            }
 
+            for (int y = 0; y < VIDEO_HEIGHT; ++y) {
+                for (int x = 0; x < VIDEO_WIDTH; ++x) {
+                    uint8_t das = dataArray[x + (y + VIDEO_HEIGHT + 12) * VIDEO_WIDTH];
+                    pixelData[x + (y + VIDEO_HEIGHT + screenborder * 2) * VIDEO_WIDTH] =
+                            0xFF000000 | ((int) (das * color[2]) << 16) | ((int) (das * color[1]) << 8) | (int) (das * color[0]);
                 }
             }
 
             // make the space between the two images transparent
-            memset(&pixelData[VIDEO_WIDTH * VIDEO_HEIGHT], 0, 12 * VIDEO_WIDTH * 4);
+            memset(&pixelData[VIDEO_WIDTH * VIDEO_HEIGHT], 0x00000000, screenborder * 1 * VIDEO_WIDTH * 4);
+            memset(&pixelData[VIDEO_WIDTH * VIDEO_HEIGHT + VIDEO_WIDTH], 0x00000000, screenborder * 1 * VIDEO_WIDTH * 4);
 
             glBindTexture(GL_TEXTURE_2D, screenTextureId);
             glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, CylinderWidth, TextureHeight, GL_RGBA, GL_UNSIGNED_BYTE, pixelData);
@@ -352,28 +354,27 @@ namespace Emulator {
             glBlendEquation(GL_FUNC_ADD);
             // render image to the screen texture
             glBindFramebuffer(GL_FRAMEBUFFER, screenFramebuffer[0]);
-            glViewport(0, 0, VIDEO_WIDTH * 2 + 24, TextureHeight * 2 + 24);
+            glViewport(0, 0, VIDEO_WIDTH * 2 + screenborder * 2, TextureHeight * 2 + screenborder * 4);
             glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
             glClear(GL_COLOR_BUFFER_BIT);
+
             // @HACK: make DrawTexture better
             // 640, 576 is used because it is the full size of the projection set before
             // TODO use 6px border
             DrawHelper::DrawTexture(screenTextureId,
-                                    640 * (12.0f / (VIDEO_WIDTH * 2 + 24)),
-                                    576 * (12.0f / (TextureHeight * 2 + 24)),
-                                    640 * ((float) (VIDEO_WIDTH * 2) / (VIDEO_WIDTH * 2 + 24)),
-                                    576 * ((float) (TextureHeight * 2) / (TextureHeight * 2 + 24)),
-                                    {1.0f, 1.0f, 1.0f, 1.0f},
-                                    1);
+                                    640 * ((float) screenborder * 2 / (VIDEO_WIDTH * 2 + screenborder * 4)),
+                                    576 * ((float) screenborder * 2 / (TextureHeight * 2 + screenborder * 4)),
+                                    640 * ((float) (VIDEO_WIDTH * 2) / (VIDEO_WIDTH * 2 + screenborder * 4)),
+                                    576 * ((float) (TextureHeight * 2) / (TextureHeight * 2 + screenborder * 4)),
+                                    {1.0f, 1.0f, 1.0f, 1.0f}, 1);
             glBindFramebuffer(GL_FRAMEBUFFER, 0);
         }
 
-        ScreenTexture[0] =
-                GlTexture(screenTextureCylinderId,
-                          GL_TEXTURE_2D, VIDEO_WIDTH * 2 + 24, TextureHeight * 2 + 24);
-        ScreenTexture[1] =
-                GlTexture(screenTextureCylinderId,
-                          GL_TEXTURE_2D, VIDEO_WIDTH * 2 + 24, TextureHeight * 2 + 24);
+        // TODO whut
+        ScreenTexture[0] = GlTexture(screenTextureCylinderId, GL_TEXTURE_2D,
+                                     VIDEO_WIDTH * 2 + screenborder * 4, TextureHeight * 2 + screenborder * 4);
+        ScreenTexture[1] = GlTexture(screenTextureCylinderId, GL_TEXTURE_2D,
+                                     VIDEO_WIDTH * 2 + screenborder * 4, TextureHeight * 2 + screenborder * 4);
 
     }
 
@@ -515,7 +516,7 @@ namespace Emulator {
 
         glGenTextures(1, &screenTextureId);
         glBindTexture(GL_TEXTURE_2D, screenTextureId);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, VIDEO_WIDTH, VIDEO_HEIGHT * 2 + 12, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, VIDEO_WIDTH, VIDEO_HEIGHT * 2 + screenborder * 4, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
@@ -526,14 +527,14 @@ namespace Emulator {
         glBindTexture(GL_TEXTURE_2D, 0);
 
         {
-            int borderSize = 24;
+            int borderSize = screenborder;
             // left texture
             CylinderSwapChain =
-                    vrapi_CreateTextureSwapChain(VRAPI_TEXTURE_TYPE_2D, VRAPI_TEXTURE_FORMAT_8888_sRGB, CylinderWidth * 2 + borderSize,
-                                                 TextureHeight * 2 + borderSize, 1, false);
+                    vrapi_CreateTextureSwapChain(VRAPI_TEXTURE_TYPE_2D, VRAPI_TEXTURE_FORMAT_8888_sRGB, CylinderWidth * 2 + borderSize * 2,
+                                                 TextureHeight * 2 + borderSize * 2, 1, false);
             screenTextureCylinderId = vrapi_GetTextureSwapChainHandle(CylinderSwapChain, 0);
             glBindTexture(GL_TEXTURE_2D, screenTextureCylinderId);
-            glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, CylinderWidth * 2 + borderSize, TextureHeight * 2 + borderSize, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+            glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, CylinderWidth * 2 + borderSize * 2, TextureHeight * 2 + borderSize * 2, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
             //glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, borderColor);
@@ -659,7 +660,7 @@ namespace Emulator {
         else if (threedeeIPD > maxIPD)
             threedeeIPD = maxIPD;
 
-        item->Text = "IPD: " + to_string(threedeeIPD * 256);
+        item->Text = "IPD offset: " + to_string(threedeeIPD * 256);
     }
 
     void ChangePalette(MenuButton *item, float dir) {
@@ -741,12 +742,9 @@ namespace Emulator {
         MenuButton *paletteButton = new MenuButton(&fontMenu, texturePaletteIconId, "", posX, posY += menuItemSize + 5, OnClickPrefabColorRight,
                                                    OnClickPrefabColorLeft, OnClickPrefabColorRight);
 
-        rButton = new MenuButton(&fontMenu, texturePaletteIconId, "", posX,
-                                 posY += menuItemSize, nullptr, OnClickRLeft, OnClickRRight);
-        gButton = new MenuButton(&fontMenu, texturePaletteIconId, "", posX,
-                                 posY += menuItemSize, nullptr, OnClickGLeft, OnClickGRight);
-        bButton = new MenuButton(&fontMenu, texturePaletteIconId, "", posX,
-                                 posY += menuItemSize, nullptr, OnClickBLeft, OnClickBRight);
+        rButton = new MenuButton(&fontMenu, texturePaletteIconId, "", posX, posY += menuItemSize, nullptr, OnClickRLeft, OnClickRRight);
+        gButton = new MenuButton(&fontMenu, texturePaletteIconId, "", posX, posY += menuItemSize, nullptr, OnClickGLeft, OnClickGRight);
+        bButton = new MenuButton(&fontMenu, texturePaletteIconId, "", posX, posY += menuItemSize, nullptr, OnClickBLeft, OnClickBRight);
 
         //settingsMenu.MenuItems.push_back(curveButton);
         settingsMenu.MenuItems.push_back(screenModeButton);
